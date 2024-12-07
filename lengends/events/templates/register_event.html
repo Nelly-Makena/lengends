@@ -13,15 +13,14 @@
     <div class="container my-4">
         <h1 class="mb-4 text-center">Event Registration</h1>
         <div class="form-container">
-            <form method="post" class="styled-form">
+            <form action="" method="post">
                 {% csrf_token %}
-                {% crispy form %}
+                {{ form|crispy }}
                 <div class="text-center">
                     <button type="submit" class="btn btn-primary btn-lg">Submit</button>
                 </div>
             </form>
         </div>
     </div>
-
 </body>
 </html>
