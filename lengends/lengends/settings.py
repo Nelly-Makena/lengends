@@ -25,12 +25,12 @@ SECRET_KEY = 'django-insecure-ex^yqfg=h(y+^2$!3lsfaw^ar$y+6ao_9u%l$)nlkhr^9&%2k=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['.ngrok-free.app', 'localhost', '127.0.0.1']
-CSRF_TRUSTED_ORIGINS = [
-    "https://26d6-197-136-53-2.ngrok-free.app"
+ALLOWED_HOSTS = [
+    '5e8a-197-136-53-2.ngrok-free.app','127.0.0.1', 'localhost'  # Ngrok domain
 ]
-# Application definition
-
+CSRF_TRUSTED_ORIGINS = [
+    'https://5e8a-197-136-53-2.ngrok-free.app',  # Add your ngrok URL here
+]
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'events',
     'crispy_forms',
     'crispy_bootstrap4',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
