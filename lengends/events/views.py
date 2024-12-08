@@ -9,6 +9,11 @@ import base64
 import json
 from .forms import EventRegistrationForm
 from .models import PaymentTransaction
+from django.views.decorators.csrf import csrf_exempt
+import logging
+
+
+
 
 
 # Function to retrieve access token
@@ -47,7 +52,7 @@ def initiate_stk_push(phone_number, amount):
         business_short_code = "174379"
         passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
 
-        # Dynamically retrieve the callback URL
+        # Dynamically retrieving  the callback URL
         ngrok_url = get_ngrok_url()
         if not ngrok_url:
             print("Failed to retrieve Ngrok URL.")
@@ -55,7 +60,7 @@ def initiate_stk_push(phone_number, amount):
 
         callback_url = f"{ngrok_url}/payment_callback/"
 
-        # Print the callback URL for debugging
+        #  for debugging the call back url
         print(f"Callback URL: {callback_url}")
 
         process_request_url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
@@ -63,7 +68,7 @@ def initiate_stk_push(phone_number, amount):
         # Timestamp
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
 
-        # Encode password
+        #  password
         password = base64.b64encode((business_short_code + passkey + timestamp).encode()).decode()
 
         stk_push_headers = {
@@ -108,10 +113,10 @@ def register_event_view(request):
     if request.method == "POST":
         form = EventRegistrationForm(request.POST)
         if form.is_valid():
-            # Save the form data if valid
+            # Saves the form data if valid
             form.save()
-            phone_number = form.cleaned_data['phone_number']  # Get phone number from form
-            amount = 1  # The set amount, change this later
+            phone_number = form.cleaned_data['phone_number']  # Get phone number from the  form
+            amount = 1  # The set amount,  i will change this later
             stk_push_success = initiate_stk_push(phone_number, amount)
 
             # Redirect to the thank you page if the STK push is successful
@@ -133,45 +138,84 @@ def thank_you_view(request):
 
 
 # Payment callback view
+@csrf_exempt
 def payment_callback_view(request):
+    log_file = "Mpesastkresponse.json"
+
     if request.method == 'POST':
         try:
-            data = request.POST
-            transaction_id = data.get('TransactionID')
-            amount = data.get('Amount')
-            status = data.get('Status')
-            checkout_request_id = data.get('CheckoutRequestID')
+            # Parse the incoming JSON request body
+            stk_callback_response = json.loads(request.body)
 
-            # Check if required data exists
-            if not all([transaction_id, amount, status, checkout_request_id]):
+            # Log the response data to a file for debugging
+            with open(log_file, "a") as log:
+                json.dump(stk_callback_response, log)
+                log.write("\n")  # new line
+
+            # Extract the necessary data from the response
+            merchant_request_id = stk_callback_response.get('Body', {}).get('stkCallback', {}).get('MerchantRequestID')
+            checkout_request_id = stk_callback_response.get('Body', {}).get('stkCallback', {}).get('CheckoutRequestID')
+            result_code = stk_callback_response.get('Body', {}).get('stkCallback', {}).get('ResultCode')
+            result_desc = stk_callback_response.get('Body', {}).get('stkCallback', {}).get('ResultDesc')
+
+            # Safe access for CallbackMetadata and its items
+            callback_metadata = stk_callback_response.get('Body', {}).get('stkCallback', {}).get('CallbackMetadata',
+                                                                                                 {}).get('Item', [])
+
+            # Initialize the variables to None
+            amount = None
+            transaction_id = None
+            user_phone_number = None
+
+            # Check if CallbackMetadata exists and contains items
+            if callback_metadata:
+                for item in callback_metadata:
+                    if item.get('Name') == 'Amount':
+                        amount = item.get('Value')
+                    elif item.get('Name') == 'TransID':
+                        transaction_id = item.get('Value')
+                    elif item.get('Name') == 'PhoneNumber':
+                        user_phone_number = item.get('Value')
+
+            # Ensure all necessary data is present
+            if not all([merchant_request_id, checkout_request_id, result_code, result_desc, amount, transaction_id,
+                        user_phone_number]):
                 return JsonResponse({"status": "error", "message": "Missing required data"}, status=400)
 
-            # Check if the transaction already exists in the database to prevent duplicates
-            payment = PaymentTransaction.objects.filter(transaction_id=transaction_id).first()
-            if payment:
-                return JsonResponse({"status": "error", "message": "Duplicate transaction detected"}, status=400)
+            # Check if the payment was successful
+            if result_code == 0:
+                # Store the transaction details in the database
+                payment = PaymentTransaction(
+                    merchant_request_id=merchant_request_id,
+                    checkout_request_id=checkout_request_id,
+                    result_code=result_code,
+                    result_desc=result_desc,
+                    amount=amount,
+                    transaction_id=transaction_id,
+                    user_phone_number=user_phone_number,
+                )
+                payment.save()
 
-            # Create a new payment transaction
-            payment = PaymentTransaction(
-                transaction_id=transaction_id,
-                amount=amount,
-                status=status,
-                checkout_request_id=checkout_request_id
-            )
-            payment.save()
+                # Return a success response
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Payment processed successfully",
+                    "MerchantRequestID": merchant_request_id,
+                    "CheckoutRequestID": checkout_request_id,
+                    "ResponseCode": result_code,
+                    "ResponseDescription": result_desc,
+                    "CustomerMessage": "Success. Request accepted for processing"
+                })
 
-            # Return a success response
-            return JsonResponse({
-                "status": "success",
-                "message": "Payment processed successfully",
-                "transaction_id": transaction_id,
-                "amount": amount,
-                "status": status
-            })
+            else:
+                return JsonResponse({
+                    "status": "error",
+                    "message": f"Payment failed: {result_desc}"
+                }, status=400)
 
         except Exception as e:
-            # Log the exception for debugging
-            print(f"Error processing payment callback: {str(e)}")
+            logging.error(f"Error processing payment callback: {str(e)}")
             return JsonResponse({"status": "error", "message": "Failed to process payment"}, status=500)
+
     else:
         return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)

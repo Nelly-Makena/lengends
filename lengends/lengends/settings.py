@@ -27,10 +27,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['.ngrok-free.app', 'localhost', '127.0.0.1']
 CSRF_TRUSTED_ORIGINS = [
-    'https://d212-197-136-53-2.ngrok-free.app',
-    'http://d212-197-136-53-2.ngrok-free.app',  # Include both HTTP and HTTPS
+    "https://26d6-197-136-53-2.ngrok-free.app"
 ]
-
 # Application definition
 
 INSTALLED_APPS = [
